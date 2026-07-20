@@ -39,7 +39,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text)}
   #main-area{padding-bottom:56px}
   .modal-panel{width:100%!important;border-left:none!important;border-top:1px solid var(--border);border-radius:16px 16px 0 0;max-height:85vh;align-self:flex-end!important}
   #modal-overlay{justify-content:center;align-items:flex-end}
-  .stat-grid{flex-direction:column}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat-box{min-width:0!important;flex:unset!important}
   .trade-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .trade-table-wrap table{min-width:700px}
   .calendar-grid{gap:3px!important}
