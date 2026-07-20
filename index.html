@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Absorption Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0A0E16;--surface:#11161F;--surface2:#1A2029;
+  --border:#232B38;--borderLight:#2E3745;
+  --text:#E7EAEF;--textDim:#8891A3;--textFaint:#5B6478;
+  --gold:#D4A24E;--goldDim:#8A6A38;
+  --green:#38D9A0;--greenDim:#1E5844;
+  --red:#F1685E;--redDim:#5C2A28;
+  --amber:#F2B84B;--blue:#6FA8F5;
+}
+html,body{height:100%;width:100%;overflow:hidden}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text)}
+
+/* === Layout === */
+#app{display:flex;flex-direction:column;height:100vh;width:100vw;overflow:hidden}
+#topbar{height:62px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:var(--bg);flex-shrink:0}
+#main-area{display:flex;flex:1;min-height:0}
+#rail{width:60px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:4;flex-shrink:0}
+#content{flex:1;overflow-y:auto}
+#modal-overlay{position:fixed;inset:0;background:rgba(6,8,12,0.7);z-index:50;display:none;justify-content:flex-end}
+#modal-overlay.open{display:flex}
+.modal-panel{width:520px;max-width:100%;height:100%;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
+
+/* === Responsive === */
+@media(max-width:600px){
+  #topbar{height:auto;padding:10px 14px;flex-wrap:wrap;gap:8px}
+  .tb-left{flex-direction:column;gap:4px!important;align-items:flex-start!important}
+  .tb-right{width:100%;justify-content:space-between!important}
+  #rail{display:none}
+  #mobile-tabbar{display:flex!important}
+  #main-area{padding-bottom:56px}
+  .modal-panel{width:100%!important;border-left:none!important;border-top:1px solid var(--border);border-radius:16px 16px 0 0;max-height:85vh;align-self:flex-end!important}
+  #modal-overlay{justify-content:center;align-items:flex-end}
+  .stat-grid{flex-direction:column}
+  .trade-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .trade-table-wrap table{min-width:700px}
+  .calendar-grid{gap:3px!important}
+  .risk-gauge-card{flex:1 1 100%!important}
+}
+#mobile-tabbar{display:none;position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--bg);border-top:1px solid var(--border);z-index:40;align-items:center;justify-content:space-around}
+#mobile-tabbar button{background:none;border:none;color:var(--textDim);font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 8px;font-family:'Manrope',sans-serif}
+#mobile-tabbar button.active{color:var(--gold)}
+#mobile-tabbar button svg{width:20px;height:20px}
+
+/* === Shared styles === */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.pill{font-size:11px;font-weight:700;letter-spacing:.4px;padding:3px 9px;border-radius:999px;text-transform:uppercase;display:inline-block}
+.pill-neutral{background:var(--surface2);color:var(--textDim)}
+.pill-green{background:var(--greenDim);color:var(--green)}
+.pill-red{background:var(--redDim);color:var(--red)}
+.pill-gold{background:#3A2E18;color:var(--gold)}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:130px}
+.stat-box .lbl{font-size:11px;color:var(--textFaint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
+.stat-box .val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600}
+.stat-grid{display:flex;flex-wrap:wrap;gap:12px}
+.icon-btn{background:none;border:none;color:var(--textDim);cursor:pointer;padding:2px}
+.icon-btn:hover{color:var(--text)}
+.pill-btn{border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;cursor:pointer;font-family:'Manrope',sans-serif}
+.input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'JetBrains Mono',monospace;width:200px}
+.input-sm{width:60px;padding:2px 6px}
+.input-md{width:70px;padding:2px 6px}
+.input-full{width:100%}
+textarea.input{resize:vertical}
+.row-label{font-size:12px;color:var(--textDim)}
+.form-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.page-pad{padding:22px;display:flex;flex-direction:column;gap:18px}
+.section-title{font-size:12px;color:var(--textFaint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
+.empty-state{text-align:center;padding:40px 0;color:var(--textFaint);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:6px 10px;color:var(--textFaint);font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:9px 10px;color:var(--text)}
+tr{border-bottom:1px solid var(--border)}
+
+/* === Rail buttons === */
+.rail-btn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer;color:var(--textDim)}
+.rail-btn.active{background:var(--surface2);border-color:var(--borderLight);color:var(--gold)}
+.rail-btn svg{width:18px;height:18px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar"></div>
+  <div id="main-area">
+    <div id="rail"></div>
+    <div id="content"></div>
+  </div>
+  <div id="modal-overlay"><div class="modal-panel"></div></div>
+  <div id="mobile-tabbar"></div>
+</div>
+
+<script>
+/* ====================================================================== */
+/* Design tokens                                                          */
+/* ====================================================================== */
+const T = {
+  bg:"#0A0E16",surface:"#11161F",surface2:"#1A2029",
+  border:"#232B38",borderLight:"#2E3745",
+  text:"#E7EAEF",textDim:"#8891A3",textFaint:"#5B6478",
+  gold:"#D4A24E",goldDim:"#8A6A38",
+  green:"#38D9A0",greenDim:"#1E5844",
+  red:"#F1685E",redDim:"#5C2A28",
+  amber:"#F2B84B",blue:"#6FA8F5",
+};
+
+const SYMBOLS = {
+  NQ:{label:"NQ",multiplier:20,tick:.25,tickValue:5},
+  MNQ:{label:"MNQ",multiplier:2,tick:.25,tickValue:.5},
+  ES:{label:"ES",multiplier:50,tick:.25,tickValue:12.5},
+  MES:{label:"MES",multiplier:5,tick:.25,tickValue:1.25},
+};
+
+/* ====================================================================== */
+/* Utilities                                                              */
+/* ====================================================================== */
+const uid=()=>Math.random().toString(36).slice(2,10);
+const fmt$=n=>(n<0?"-$":"$")+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate=d=>{const dt=new Date(d);return dt.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})};
+const dayKey=d=>new Date(d).toISOString().slice(0,10);
+
+/* ====================================================================== */
+/* Storage                                                                */
+/* ====================================================================== */
+const STORE_KEY="absorption-terminal-v1";
+function loadState(){try{const r=localStorage.getItem(STORE_KEY);if(r)return JSON.parse(r)}catch(e){console.error("load failed",e)}return null}
+function saveState(data){try{localStorage.setItem(STORE_KEY,JSON.stringify(data))}catch(e){console.error("save failed",e)}}
+
+/* ====================================================================== */
+/* Default rules                                                          */
+/* ====================================================================== */
+function makeDefaultRules(){return[
+  {id:uid(),name:"Max contracts",type:"maxContracts",maxQty:6,active:true},
+  {id:uid(),name:"Stop distance 45-50 ticks",type:"stopRange",minTicks:45,maxTicks:50,active:true},
+  {id:uid(),name:"Daily max loss limit",type:"dailyLossLimit",amount:300,active:true},
+  {id:uid(),name:"Move to breakeven at 1R",type:"breakeven",active:true},
+]}
+
+/* ====================================================================== */
+/* Rule evaluation                                                        */
+/* ====================================================================== */
+function evaluateTradeRules(trade,rules){
+  const results=[];
+  rules.filter(r=>r.active).forEach(r=>{
+    if(r.type==="maxContracts"){
+      results.push({rule:r,pass:Number(trade.qty)<=r.maxQty,detail:`${trade.qty} / max ${r.maxQty}`});
+    }else if(r.type==="stopRange"){
+      if(trade.stopTicks===""||trade.stopTicks==null)return;
+      const t=Number(trade.stopTicks);
+      const pass=t>=r.minTicks&&t<=r.maxTicks;
+      results.push({rule:r,pass,detail:`${t} ticks (want ${r.minTicks}-${r.maxTicks})`});
+    }else if(r.type==="breakeven"){
+      if(trade.status!=="closed")return;
+      results.push({rule:r,pass:!!trade.movedToBreakeven,detail:trade.movedToBreakeven?"moved":"not moved"});
+    }else if(r.type==="custom"){
+      results.push({rule:r,pass:!!trade.customChecks&&!!trade.customChecks[r.id],detail:trade.customChecks&&trade.customChecks[r.id]?"followed":"not marked"});
+    }
+  });
+  return results;
+}
+
+function computeDailyLossCompliance(trades,rules){
+  const rule=rules.find(r=>r.type==="dailyLossLimit"&&r.active);
+  if(!rule)return{};
+  const byDay={};
+  trades.filter(t=>t.status==="closed").forEach(t=>{
+    const k=dayKey(t.exitTime||t.entryTime);
+    byDay[k]=(byDay[k]||0)+tradePnl(t);
+  });
+  const out={};
+  Object.entries(byDay).forEach(([k,pnl])=>{
+    out[k]={pnl,pass:pnl>=-rule.amount,limit:rule.amount};
+  });
+  return out;
+}
+
+function tradePnl(t){
+  if(t.status!=="closed"||t.exitPrice===""||t.exitPrice==null)return 0;
+  const sym=SYMBOLS[t.symbol]||{multiplier:1};
+  const dir=t.direction==="long"?1:-1;
+  return (Number(t.exitPrice)-Number(t.entryPrice))*dir*Number(t.qty)*sym.multiplier-Number(t.fee||0);
+}
+
+/* ====================================================================== */
+/* SVG Icon helpers                                                       */
+/* ====================================================================== */
+const icons={
+  LayoutDashboard:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>`,
+  ListOrdered:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="3" y="8" fill="currentColor" stroke="none" font-size="7" font-family="JetBrains Mono" font-weight="700">1</text><text x="3" y="14" fill="currentColor" stroke="none" font-size="7" font-family="JetBrains Mono" font-weight="700">2</text><text x="3" y="20" fill="currentColor" stroke="none" font-size="7" font-family="JetBrains Mono" font-weight="700">3</text></svg>`,
+  PlusCircle:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
+  ShieldCheck:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`,
+  BarChart3:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
+  CalendarDays:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  X:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  Trash2:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+  Pencil:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`,
+  Check:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  AlertTriangle:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  TrendingUp:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+  TrendingDown:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>`,
+  ChevronLeft:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  ChevronRight:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  Gauge:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 6v6l4 2"/></svg>`,
+  Target:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+};
+function icon(name,sw=2){return `<span style="display:inline-flex;width:1em;height:1em;vertical-align:-.125em">${icons[name]}</span>`}
+
+/* ====================================================================== */
+/* State                                                                  */
+/* ====================================================================== */
+let state = {
+  view: "dashboard",
+  trades: [],
+  rules: makeDefaultRules(),
+  modal: null,        // null = closed, "new" = add, {trade} = edit
+  calendarCursor: new Date(),
+  loaded: false,
+};
+
+/* ====================================================================== */
+/* TopBar                                                                 */
+/* ====================================================================== */
+function renderTopbar(){
+  const tb=document.getElementById("topbar");
+  const allTimePnl=state.trades.filter(t=>t.status==="closed").reduce((a,t)=>a+tradePnl(t),0);
+  const pnlColor=allTimePnl>=0?T.green:T.red;
+  tb.innerHTML=`
+    <div class="tb-left" style="display:flex;align-items:baseline;gap:22px">
+      <div>
+        <div style="font-size:10px;color:${T.textFaint};letter-spacing:.6px">ACCOUNT</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px">${fmt$(10000)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:${T.textFaint};letter-spacing:.6px">ALL-TIME PNL</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:${pnlColor}">${fmt$(allTimePnl)}</div>
+      </div>
+    </div>
+    <div class="tb-right" style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:13px;color:${T.gold};font-weight:700;letter-spacing:1px;font-family:'Manrope',sans-serif">ABSORPTION TERMINAL</div>
+      <button id="btn-add-trade" style="display:flex;align-items:center;gap:6px;background:${T.gold};color:#1A1206;font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer">
+        <span style="width:16px;height:16px;display:inline-flex">${icons.PlusCircle}</span> Add Trade
+      </button>
+    </div>`;
+  document.getElementById("btn-add-trade").onclick=()=>{state.modal="new";renderModal();render()};
+}
+
+/* ====================================================================== */
+/* Rail (desktop)                                                         */
+/* ====================================================================== */
+function renderRail(){
+  const rail=document.getElementById("rail");
+  const items=[
+    {id:"dashboard",icon:"LayoutDashboard",label:"Dashboard"},
+    {id:"log",icon:"ListOrdered",label:"Trade Log"},
+    {id:"calendar",icon:"CalendarDays",label:"Calendar"},
+    {id:"stats",icon:"BarChart3",label:"Statistics"},
+    {id:"rules",icon:"ShieldCheck",label:"Rules"},
+  ];
+  rail.innerHTML=items.map(it=>`
+    <button class="rail-btn ${state.view===it.id?"active":""}" data-view="${it.id}" title="${it.label}">
+      ${icons[it.icon]}
+    </button>`).join("");
+  rail.querySelectorAll(".rail-btn").forEach(b=>{
+    b.onclick=()=>{state.view=b.dataset.view;renderContent();renderRail();renderMobileTab()};
+  });
+}
+
+/* ====================================================================== */
+/* Mobile tab bar                                                         */
+/* ====================================================================== */
+function renderMobileTab(){
+  const bar=document.getElementById("mobile-tabbar");
+  const items=[
+    {id:"dashboard",icon:"LayoutDashboard",label:"Home"},
+    {id:"log",icon:"ListOrdered",label:"Log"},
+    {id:"calendar",icon:"CalendarDays",label:"Cal"},
+    {id:"stats",icon:"BarChart3",label:"Stats"},
+    {id:"rules",icon:"ShieldCheck",label:"Rules"},
+  ];
+  bar.innerHTML=items.map(it=>`
+    <button class="${state.view===it.id?"active":""}" data-view="${it.id}">
+      <span style="width:20px;height:20px;display:inline-flex">${icons[it.icon]}</span>${it.label}
+    </button>`).join("");
+  bar.querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>{state.view=b.dataset.view;renderContent();renderRail();renderMobileTab()};
+  });
+}
+
+/* ====================================================================== */
+/* Content router                                                         */
+/* ====================================================================== */
+function renderContent(){
+  const c=document.getElementById("content");
+  switch(state.view){
+    case"dashboard":renderDashboard(c);break;
+    case"log":renderTradeLog(c);break;
+    case"calendar":renderCalendar(c);break;
+    case"stats":renderStats(c);break;
+    case"rules":renderRules(c);break;
+  }
+}
+
+/* ====================================================================== */
+/* Risk gauge                                                             */
+/* ====================================================================== */
+function riskGaugeHTML(pnlToday,mll,target){
+  const ratio=Math.max(-1,Math.min(1,pnlToday>=0?pnlToday/target:pnlToday/mll));
+  const angle=ratio*90;
+  const rad=d=>d*Math.PI/180;
+  const cx=110,cy=100,r=78;
+  const nx=cx+r*.86*Math.sin(rad(angle));
+  const ny=cy-r*.86*Math.cos(rad(angle));
+  function arc(s,e,color,w=14){
+    const sx=cx+r*Math.sin(rad(s)),sy=cy-r*Math.cos(rad(s));
+    const ex=cx+r*Math.sin(rad(e)),ey=cy-r*Math.cos(rad(e));
+    const lg=e-s>180?1:0;
+    return `<path d="M ${sx} ${sy} A ${r} ${r} 0 ${lg} 1 ${ex} ${ey}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+  }
+  const pColor=pnlToday>=0?T.green:T.red;
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center">
+      <svg width="220" height="130" viewBox="0 0 220 130">
+        ${arc(-90,-20,T.red,14)}
+        ${arc(-20,20,T.goldDim,14)}
+        ${arc(20,90,T.green,14)}
+        <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${T.text}" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="${cx}" cy="${cy}" r="5" fill="${T.text}"/>
+        <text x="${cx-r-6}" y="${cy+22}" fill="${T.textFaint}" font-size="10" font-family="JetBrains Mono">-${fmt$(mll)}</text>
+        <text x="${cx+r-24}" y="${cy+22}" fill="${T.textFaint}" font-size="10" font-family="JetBrains Mono">+${fmt$(target)}</text>
+      </svg>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;color:${pColor};margin-top:-6px">${fmt$(pnlToday)}</div>
+      <div style="font-size:11px;color:${T.textFaint};text-transform:uppercase;letter-spacing:.6px;margin-top:2px">Today vs. daily loss limit</div>
+    </div>`;
+}
+
+/* ====================================================================== */
+/* Dashboard                                                              */
+/* ====================================================================== */
+function renderDashboard(el){
+  const closed=state.trades.filter(t=>t.status==="closed");
+  const open=state.trades.filter(t=>t.status==="open");
+  const wins=closed.filter(t=>tradePnl(t)>0);
+  const losses=closed.filter(t=>tradePnl(t)<0);
+  const totalPnl=closed.reduce((a,t)=>a+tradePnl(t),0);
+  const today=dayKey(new Date());
+  const pnlToday=closed.filter(t=>dayKey(t.exitTime||t.entryTime)===today).reduce((a,t)=>a+tradePnl(t),0);
+  const mllRule=state.rules.find(r=>r.type==="dailyLossLimit"&&r.active);
+  const mll=mllRule?mllRule.amount:300;
+  const winRate=closed.length?Math.round((wins.length/closed.length)*100):0;
+  const avgWin=wins.length?fmt$(wins.reduce((a,t)=>a+tradePnl(t),0)/wins.length):"$0.00";
+
+  el.innerHTML=`
+    <div class="page-pad">
+      <div style="display:flex;gap:18px;flex-wrap:wrap">
+        <div class="card risk-gauge-card" style="padding:20px;display:flex;justify-content:center;flex:0 1 auto;min-width:240px">
+          ${riskGaugeHTML(pnlToday,mll,mll*1.5)}
+        </div>
+        <div class="stat-grid" style="flex:1;min-width:280px;align-content:flex-start">
+          ${statBoxHTML("Wins",wins.length,"green")}
+          ${statBoxHTML("Losses",losses.length,"red")}
+          ${statBoxHTML("Open",open.length)}
+          ${statBoxHTML("Total PnL",fmt$(totalPnl),totalPnl>=0?"green":"red")}
+          ${statBoxHTML("Win rate",winRate+"%")}
+          ${statBoxHTML("Avg win",avgWin,"green")}
+        </div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div class="section-title">Recent trades</div>
+        ${state.trades.length===0
+          ?'<div class="empty-state">No trades yet. Log your first trade to populate the dashboard.</div>'
+          :tradeTableHTML([...state.trades].sort((a,b)=>new Date(b.entryTime)-new Date(a.entryTime)).slice(0,8),false)}
+      </div>
+    </div>`;
+  bindTableActions(el);
+}
+
+function statBoxHTML(label,value,tone){
+  const c=tone==="green"?T.green:tone==="red"?T.red:T.text;
+  return `<div class="stat-box"><div class="lbl">${label}</div><div class="val" style="color:${c}">${value}</div></div>`;
+}
+
+/* ====================================================================== */
+/* Trade table                                                            */
+/* ====================================================================== */
+function tradeTableHTML(trades,showDelete){
+  const rows=trades.map(t=>{
+    const pnl=tradePnl(t);
+    const results=evaluateTradeRules(t,state.rules);
+    const fails=results.filter(r=>!r.pass).length;
+    const dirClass=t.direction==="long"?"pill-green":"pill-red";
+    const compliance=results.length===0
+      ?`<span style="color:${T.textFaint}">—</span>`
+      :(fails===0?`<span class="pill pill-green">Pass</span>`:`<span class="pill pill-red">${fails} issue${fails>1?"s":""}</span>`);
+    const pnlColor=t.status!=="closed"?T.textFaint:(pnl>=0?T.green:T.red);
+    const pnlText=t.status==="closed"?fmt$(pnl):"OPEN";
+    const exitDisplay=t.status==="closed"?t.exitPrice:"—";
+    return `<tr data-id="${t.id}">
+      <td style="font-size:13px">${fmtDate(t.entryTime)}</td>
+      <td style="font-size:13px">${t.symbol}</td>
+      <td><span class="pill ${dirClass}">${t.direction}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:13px">${t.qty}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:13px">${t.entryPrice}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:13px">${exitDisplay}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${pnlColor}">${pnlText}</td>
+      <td style="font-size:13px">${compliance}</td>
+      <td>
+        <div style="display:flex;gap:8px">
+          <button class="icon-btn" data-action="edit" data-trade-id="${t.id}" title="Edit"><span style="width:14px;height:14px;display:inline-flex">${icons.Pencil}</span></button>
+          ${showDelete?`<button class="icon-btn" data-action="delete" data-trade-id="${t.id}" title="Delete"><span style="width:14px;height:14px;display:inline-flex">${icons.Trash2}</span></button>`:""}
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+  return `<div class="trade-table-wrap" style="overflow-x:auto"><table><thead><tr>
+    <th>Date</th><th>Symbol</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Compliance</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function bindTableActions(el){
+  el.querySelectorAll("[data-action='edit']").forEach(b=>{
+    b.onclick=()=>{const id=b.dataset.tradeId;const t=state.trades.find(x=>x.id===id);if(t){state.modal={trade:t};renderModal();render()}};
+  });
+  el.querySelectorAll("[data-action='delete']").forEach(b=>{
+    b.onclick=()=>{const id=b.dataset.tradeId;state.trades=state.trades.filter(x=>x.id!==id);persist();renderContent()};
+  });
+}
+
+/* ====================================================================== */
+/* Trade log                                                              */
+/* ====================================================================== */
+function renderTradeLog(el){
+  el.innerHTML=`
+    <div class="page-pad">
+      <div class="card" style="padding:18px">
+        <div class="section-title">All trades (${state.trades.length})</div>
+        ${state.trades.length===0?'<div class="empty-state">No trades logged yet.</div>':tradeTableHTML([...state.trades].sort((a,b)=>new Date(b.entryTime)-new Date(a.entryTime)),true)}
+      </div>
+    </div>`;
+  bindTableActions(el);
+}
+
+/* ====================================================================== */
+/* Calendar                                                               */
+/* ====================================================================== */
+function renderCalendar(el){
+  const cursor=state.calendarCursor;
+  const closed=state.trades.filter(t=>t.status==="closed");
+  const byDay={};
+  closed.forEach(t=>{const k=dayKey(t.exitTime||t.entryTime);byDay[k]=(byDay[k]||0)+tradePnl(t)});
+  const year=cursor.getFullYear(),month=cursor.getMonth();
+  const first=new Date(year,month,1);
+  const startDow=first.getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const cells=[];
+  for(let i=0;i<startDow;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+  const monthPnl=Object.entries(byDay).filter(([k])=>k.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).reduce((a,[,v])=>a+v,0);
+  const monthLabel=first.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  const pnlColor=monthPnl>=0?T.green:T.red;
+  const weekdays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  const calCells=cells.map((d,i)=>{
+    if(!d)return `<div></div>`;
+    const k=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const pnl=byDay[k];
+    const has=pnl!==undefined;
+    const bg=has?(pnl>=0?T.greenDim:T.redDim):T.surface2;
+    const pColor=has?(pnl>=0?T.green:T.red):"";
+    return `<div style="aspect-ratio:1;border-radius:8px;border:1px solid ${T.border};background:${bg};display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px">
+      <div style="font-size:11px;color:${T.textFaint}">${d}</div>
+      ${has?`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${pColor}">${fmt$(pnl)}</div>`:""}
+    </div>`;
+  }).join("");
+
+  el.innerHTML=`
+    <div class="page-pad">
+      <div class="card" style="padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="icon-btn" id="cal-prev"><span style="width:18px;height:18px;display:inline-flex">${icons.ChevronLeft}</span></button>
+            <div style="font-weight:700;font-size:15px">${monthLabel}</div>
+            <button class="icon-btn" id="cal-next"><span style="width:18px;height:18px;display:inline-flex">${icons.ChevronRight}</span></button>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${pnlColor}">${fmt$(monthPnl)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px">
+          ${weekdays.map(d=>`<div style="text-align:center;font-size:11px;color:${T.textFaint}">${d}</div>`).join("")}
+        </div>
+        <div class="calendar-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+          ${calCells}
+        </div>
+      </div>
+    </div>`;
+  document.getElementById("cal-prev").onclick=()=>{state.calendarCursor=new Date(year,month-1,1);renderContent()};
+  document.getElementById("cal-next").onclick=()=>{state.calendarCursor=new Date(year,month+1,1);renderContent()};
+}
+
+/* ====================================================================== */
+/* Statistics + Canvas equity curve                                       */
+/* ====================================================================== */
+function renderStats(el){
+  const closed=[...state.trades.filter(t=>t.status==="closed")].sort((a,b)=>new Date(a.exitTime||a.entryTime)-new Date(b.exitTime||b.entryTime));
+  const wins=closed.filter(t=>tradePnl(t)>0);
+  const losses=closed.filter(t=>tradePnl(t)<0);
+  const totalPnl=closed.reduce((a,t)=>a+tradePnl(t),0);
+  const grossWin=wins.reduce((a,t)=>a+tradePnl(t),0);
+  const grossLoss=Math.abs(losses.reduce((a,t)=>a+tradePnl(t),0));
+  const profitFactor=grossLoss?grossWin/grossLoss:0;
+  const winRate=closed.length?wins.length/closed.length:0;
+  const avgWin=wins.length?grossWin/wins.length:0;
+  const avgLoss=losses.length?grossLoss/losses.length:0;
+  const expectancy=closed.length?(winRate*avgWin)-((1-winRate)*avgLoss):0;
+  const largestWin=wins.length?Math.max(...wins.map(tradePnl)):0;
+  const largestLoss=losses.length?Math.min(...losses.map(tradePnl)):0;
+  let running=0;
+  const equity=closed.map((t,i)=>{running+=tradePnl(t);return{i:i+1,equity:Math.round(running*100)/100}});
+  const bySymbol={};
+  closed.forEach(t=>{bySymbol[t.symbol]=(bySymbol[t.symbol]||0)+tradePnl(t)});
+
+  const stats=[
+    statBoxHTML("P&L",fmt$(totalPnl),totalPnl>=0?"green":"red"),
+    statBoxHTML("Win rate",Math.round(winRate*100)+"%"),
+    statBoxHTML("Profit factor",profitFactor.toFixed(2)),
+    statBoxHTML("Total trades",closed.length),
+    statBoxHTML("Avg win",fmt$(avgWin),"green"),
+    statBoxHTML("Avg loss",fmt$(-avgLoss),"red"),
+    statBoxHTML("Largest win",fmt$(largestWin),"green"),
+    statBoxHTML("Largest loss",fmt$(largestLoss),"red"),
+    statBoxHTML("Expectancy",fmt$(expectancy),expectancy>=0?"green":"red"),
+  ];
+
+  const symRows=Object.entries(bySymbol).map(([s,v])=>`
+    <div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--surface2);border-radius:6px;font-size:13px">
+      <span>${s}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:${v>=0?T.green:T.red};font-weight:700">${fmt$(v)}</span>
+    </div>`).join("");
+
+  el.innerHTML=`
+    <div class="page-pad">
+      <div class="stat-grid">${stats.join("")}</div>
+      <div class="card" style="padding:18px">
+        <div class="section-title">Equity curve</div>
+        ${equity.length===0?'<div class="empty-state">No closed trades yet.</div>':'<canvas id="equity-canvas" width="800" height="240" style="width:100%;height:240px"></canvas>'}
+      </div>
+      <div class="card" style="padding:18px">
+        <div class="section-title">P&L by symbol</div>
+        ${Object.keys(bySymbol).length===0?'<div class="empty-state">No data.</div>':`<div style="display:flex;flex-direction:column;gap:8px">${symRows}</div>`}
+      </div>
+    </div>`;
+  if(equity.length>0)drawEquityCurve(equity);
+}
+
+function drawEquityCurve(data){
+  const canvas=document.getElementById("equity-canvas");
+  if(!canvas)return;
+  const dpr=window.devicePixelRatio||1;
+  const rect=canvas.getBoundingClientRect();
+  canvas.width=rect.width*dpr;
+  canvas.height=rect.height*dpr;
+  const ctx=canvas.getContext("2d");
+  ctx.scale(dpr,dpr);
+  const W=rect.width,H=rect.height;
+  const pad={top:10,right:20,bottom:30,left:60};
+  const plotW=W-pad.left-pad.right;
+  const plotH=H-pad.top-pad.bottom;
+
+  const vals=data.map(d=>d.equity);
+  let minV=Math.min(0,...vals);
+  let maxV=Math.max(0,...vals);
+  if(maxV===minV){maxV+=100;minV-=100}
+  const range=maxV-minV;
+  minV-=range*.05;maxV+=range*.05;
+  const yRange=maxV-minV;
+
+  const xScale=i=>pad.left+(i/(data.length-1||1))*plotW;
+  const yScale=v=>pad.top+plotH-(((v-minV)/yRange)*plotH);
+
+  // Grid lines
+  ctx.strokeStyle=T.border;
+  ctx.lineWidth=.5;
+  const gridLines=5;
+  for(let i=0;i<=gridLines;i++){
+    const y=pad.top+(plotH/gridLines)*i;
+    ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(W-pad.right,y);ctx.stroke();
+    const val=maxV-(yRange/gridLines)*i;
+    ctx.fillStyle=T.textFaint;ctx.font="11px JetBrains Mono";ctx.textAlign="right";ctx.textBaseline="middle";
+    ctx.fillText(fmt$(val),pad.left-8,y);
+  }
+
+  // X axis labels
+  ctx.fillStyle=T.textFaint;ctx.font="11px JetBrains Mono";ctx.textAlign="center";ctx.textBaseline="top";
+  const step=Math.max(1,Math.floor(data.length/8));
+  for(let i=0;i<data.length;i+=step){
+    ctx.fillText("#"+data[i].i,xScale(i),H-pad.bottom+8);
+  }
+
+  // Zero line
+  const zeroY=yScale(0);
+  if(zeroY>=pad.top&&zeroY<=pad.top+plotH){
+    ctx.strokeStyle=T.textFaint;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(pad.left,zeroY);ctx.lineTo(W-pad.right,zeroY);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Line
+  ctx.strokeStyle=T.gold;ctx.lineWidth=2;ctx.lineJoin="round";ctx.lineCap="round";
+  ctx.beginPath();
+  data.forEach((d,i)=>{
+    const x=xScale(i),y=yScale(d.equity);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Glow
+  ctx.save();ctx.globalAlpha=.15;ctx.strokeStyle=T.gold;ctx.lineWidth=8;
+  ctx.beginPath();
+  data.forEach((d,i)=>{
+    const x=xScale(i),y=yScale(d.equity);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();ctx.restore();
+}
+
+/* ====================================================================== */
+/* Rules                                                                  */
+/* ====================================================================== */
+function renderRules(el){
+  const dailyCompliance=computeDailyLossCompliance(state.trades,state.rules);
+  const days=Object.entries(dailyCompliance).sort((a,b)=>new Date(b[0])-new Date(a[0])).slice(0,10);
+
+  const ruleItems=state.rules.map(r=>{
+    let configHTML="";
+    if(r.type==="maxContracts"){
+      configHTML=`max <input type="number" class="input input-sm" value="${r.maxQty}" data-rule-id="${r.id}" data-field="maxQty"/> contracts`;
+    }else if(r.type==="stopRange"){
+      configHTML=`between <input type="number" class="input input-sm" style="width:55px" value="${r.minTicks}" data-rule-id="${r.id}" data-field="minTicks"/> and <input type="number" class="input input-sm" style="width:55px" value="${r.maxTicks}" data-rule-id="${r.id}" data-field="maxTicks"/> ticks`;
+    }else if(r.type==="dailyLossLimit"){
+      configHTML=`limit $<input type="number" class="input input-md" value="${r.amount}" data-rule-id="${r.id}" data-field="amount"/> per day`;
+    }else if(r.type==="breakeven"){
+      configHTML="checked per trade";
+    }else if(r.type==="custom"){
+      configHTML="manual checklist item";
+    }
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${T.surface2};border-radius:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" ${r.active?"checked":""} data-toggle-rule="${r.id}"/>
+        <div>
+          <div style="font-size:13px;font-weight:600">${r.name}</div>
+          <div style="font-size:11px;color:${T.textFaint}" data-rule-config="${r.id}">${configHTML}</div>
+        </div>
+      </div>
+      <button class="icon-btn" data-remove-rule="${r.id}"><span style="width:15px;height:15px;display:inline-flex">${icons.Trash2}</span></button>
+    </div>`;
+  }).join("");
+
+  const dayItems=days.map(([k,v])=>{
+    return `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:${T.surface2};border-radius:6px;font-size:13px">
+      <span>${fmtDate(k)}</span>
+      <span style="font-family:'JetBrains Mono',monospace">${fmt$(v.pnl)}</span>
+      ${v.pass?'<span class="pill pill-green">Within limit</span>':`<span class="pill pill-red">Breached $${v.limit}</span>`}
+    </div>`;
+  }).join("");
+
+  el.innerHTML=`
+    <div class="page-pad">
+      <div class="card" style="padding:18px">
+        <div class="section-title">Trading rules</div>
+        <div style="display:flex;flex-direction:column;gap:10px">${ruleItems}</div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <input id="new-rule-name" class="input input-full" placeholder="Add a custom checklist rule..." />
+          <button id="btn-add-rule" class="pill-btn" style="background:${T.gold};color:#1A1206;font-weight:700">Add</button>
+        </div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div class="section-title">Daily loss limit compliance</div>
+        ${days.length===0?'<div class="empty-state">No closed trades yet — compliance will populate once you log some.</div>':`<div style="display:flex;flex-direction:column;gap:6px">${dayItems}</div>`}
+      </div>
+    </div>`;
+
+  // Bind rule events
+  el.querySelectorAll("[data-toggle-rule]").forEach(cb=>{
+    cb.onchange=()=>{const id=cb.dataset.toggleRule;state.rules=state.rules.map(r=>r.id===id?{...r,active:!r.active}:r);persist();renderContent()};
+  });
+  el.querySelectorAll("[data-remove-rule]").forEach(btn=>{
+    btn.onclick=()=>{const id=btn.dataset.removeRule;state.rules=state.rules.filter(r=>r.id!==id);persist();renderContent()};
+  });
+  el.querySelectorAll("[data-rule-id]").forEach(inp=>{
+    inp.onchange=()=>{const id=inp.dataset.ruleId;const field=inp.dataset.field;state.rules=state.rules.map(r=>r.id===id?{...r,[field]:Number(inp.value)}:r);persist()};
+  });
+  document.getElementById("btn-add-rule").onclick=()=>{
+    const name=document.getElementById("new-rule-name").value.trim();
+    if(!name)return;
+    state.rules=[...state.rules,{id:uid(),name,type:"custom",active:true}];
+    persist();renderContent();
+  };
+}
+
+/* ====================================================================== */
+/* Trade modal                                                            */
+/* ====================================================================== */
+function renderModal(){
+  const overlay=document.getElementById("modal-overlay");
+  const panel=overlay.querySelector(".modal-panel");
+  if(state.modal===null){overlay.classList.remove("open");return}
+  overlay.classList.add("open");
+
+  const isEdit=state.modal&&state.modal.trade;
+  const t=isEdit?{...state.modal.trade}:{
+    id:uid(),symbol:"NQ",direction:"long",qty:6,entryPrice:"",exitPrice:"",
+    entryTime:new Date().toISOString().slice(0,16),exitTime:"",status:"open",
+    stopTicks:"",fee:0,tags:"",notes:"",movedToBreakeven:false,customChecks:{},
+  };
+  const checked=state._modalChecked||false;
+  const evalResults=evaluateTradeRules(t,state.rules);
+  const customRules=state.rules.filter(r=>r.type==="custom"&&r.active);
+
+  function field(k,v){t[k]=v}
+
+  const dirBtn=(d)=>`<button class="pill-btn" data-dir="${d}" style="background:${t.direction===d?(d==="long"?T.greenDim:T.redDim):T.surface2};color:${t.direction===d?(d==="long"?T.green:T.red):T.textDim};font-weight:600">${d.toUpperCase()}</button>`;
+  const statusBtn=(s)=>`<button class="pill-btn" data-status="${s}" style="background:${t.status===s?T.surface2:"transparent"};color:${t.status===s?T.text:T.textDim};border:1px solid ${t.status===s?T.borderLight:T.border};font-weight:600">${s}</button>`;
+
+  const exitFields=t.status==="closed"?`
+    <div class="form-row"><span class="row-label">Exit price</span><input type="number" class="input" id="modal-exitPrice" value="${t.exitPrice}"/></div>
+    <div class="form-row"><span class="row-label">Exit time</span><input type="datetime-local" class="input" id="modal-exitTime" value="${t.exitTime}"/></div>
+    <div class="form-row"><span class="row-label">Moved to breakeven at 1R</span><input type="checkbox" id="modal-breakeven" ${t.movedToBreakeven?"checked":""}/></div>
+  `:"";
+
+  const customChecksHTML=customRules.map(r=>`
+    <div class="form-row"><span class="row-label">${r.name}</span><input type="checkbox" class="modal-custom-check" data-cr-id="${r.id}" ${t.customChecks&&t.customChecks[r.id]?"checked":""}/></div>
+  `).join("");
+
+  const complianceHTML=checked?`
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+      ${evalResults.length===0?'<div style="font-size:12px;color:${T.textFaint}">No applicable rules yet.</div>':''}
+      ${evalResults.map(r=>`
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 10px;background:${T.surface2};border-radius:6px">
+          <span style="color:${T.textDim}">${r.rule.name}</span>
+          <span style="color:${r.pass?T.green:T.red};font-weight:700;display:flex;align-items:center;gap:4px">
+            ${r.pass?`<span style="width:13px;height:13px;display:inline-flex">${icons.Check}</span>`:`<span style="width:13px;height:13px;display:inline-flex">${icons.AlertTriangle}</span>`} ${r.detail}
+          </span>
+        </div>`).join("")}
+    </div>`:"";
+
+  panel.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid ${T.border}">
+      <div style="font-weight:700;font-size:16px">${isEdit?"Edit Trade":"New Trade"}</div>
+      <button id="modal-close" style="background:none;border:none;color:${T.textDim};cursor:pointer"><span style="width:20px;height:20px;display:inline-flex">${icons.X}</span></button>
+    </div>
+    <div style="padding:20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px">
+      <div class="form-row"><span class="row-label">Symbol</span>
+        <select class="input" id="modal-symbol" style="width:200px">
+          ${Object.keys(SYMBOLS).map(s=>`<option value="${s}" ${t.symbol===s?"selected":""}>${s}</option>`).join("")}
+        </select>
+      </div>
+      <div class="form-row"><span class="row-label">Direction"><div style="display:flex;gap:8px">${dirBtn("long")}${dirBtn("short")}</div></span></div>
+      <div class="form-row"><span class="row-label">Status"><div style="display:flex;gap:8px">${statusBtn("open")}${statusBtn("closed")}</div></span></div>
+      <div class="form-row"><span class="row-label">Contracts (qty)</span><input type="number" class="input" id="modal-qty" value="${t.qty}"/></div>
+      <div class="form-row"><span class="row-label">Entry price</span><input type="number" class="input" id="modal-entryPrice" value="${t.entryPrice}"/></div>
+      ${exitFields}
+      <div class="form-row"><span class="row-label">Entry time</span><input type="datetime-local" class="input" id="modal-entryTime" value="${t.entryTime}"/></div>
+      <div class="form-row"><span class="row-label">Stop distance (ticks)</span><input type="number" class="input" id="modal-stopTicks" value="${t.stopTicks}" placeholder="e.g. 48"/></div>
+      ${customChecksHTML}
+      <div class="form-row"><span class="row-label">Tags</span><input class="input" id="modal-tags" value="${t.tags}" placeholder="LVN absorption, morning drive..."/></div>
+      <div><div style="font-size:11px;color:${T.textFaint};margin-bottom:6px;text-transform:uppercase">Notes</div>
+        <textarea class="input" id="modal-notes" rows="4" style="width:100%;resize:vertical" placeholder="Trade rationale, footprint read, absorption context...">${t.notes}</textarea>
+      </div>
+      <div>
+        <button id="btn-check-compliance" class="pill-btn" style="background:${T.surface2};color:${T.gold};border:1px solid ${T.goldDim};width:100%">
+          <span style="width:14px;height:14px;display:inline-flex;vertical-align:-2px;margin-right:6px">${icons.ShieldCheck}</span> Check compliance
+        </button>
+        ${complianceHTML}
+      </div>
+    </div>
+    <div style="padding:16px;border-top:1px solid ${T.border};display:flex;gap:10px">
+      <button id="modal-save" class="pill-btn" style="background:${T.gold};color:#1A1206;flex:1;font-weight:700">Save</button>
+      <button id="modal-cancel" class="pill-btn" style="background:transparent;border:1px solid ${T.border};color:${T.textDim}">Cancel</button>
+    </div>`;
+
+  // Helper to gather current modal state
+  function gatherModalState(){
+    const out={...t};
+    const sym=document.getElementById("modal-symbol");
+    if(sym)out.symbol=sym.value;
+    const qty=document.getElementById("modal-qty");
+    if(qty)out.qty=qty.value;
+    const ep=document.getElementById("modal-entryPrice");
+    if(ep)out.entryPrice=ep.value;
+    const xp=document.getElementById("modal-exitPrice");
+    if(xp)out.exitPrice=xp.value;
+    const et=document.getElementById("modal-entryTime");
+    if(et)out.entryTime=et.value;
+    const xt=document.getElementById("modal-exitTime");
+    if(xt)out.exitTime=xt.value;
+    const st=document.getElementById("modal-stopTicks");
+    if(st)out.stopTicks=st.value;
+    const tg=document.getElementById("modal-tags");
+    if(tg)out.tags=tg.value;
+    const nt=document.getElementById("modal-notes");
+    if(nt)out.notes=nt.value;
+    const bv=document.getElementById("modal-breakeven");
+    if(bv)out.movedToBreakeven=bv.checked;
+    return out;
+  }
+
+  // Direction buttons
+  panel.querySelectorAll("[data-dir]").forEach(b=>{
+    b.onclick=()=>{t.direction=b.dataset.dir;state.modal={trade:t};state._modalChecked=checked;renderModal()};
+  });
+  // Status buttons
+  panel.querySelectorAll("[data-status]").forEach(b=>{
+    b.onclick=()=>{t.status=b.dataset.status;state.modal={trade:t};state._modalChecked=checked;renderModal()};
+  });
+  // Custom checks
+  panel.querySelectorAll(".modal-custom-check").forEach(cb=>{
+    cb.onchange=()=>{const cur=gatherModalState();if(!cur.customChecks)cur.customChecks={};cur.customChecks[cb.dataset.crId]=cb.checked;t.customChecks=cur.customChecks};
+  });
+  // Compliance check
+  const btnCheck=document.getElementById("btn-check-compliance");
+  if(btnCheck)btnCheck.onclick=()=>{state._modalChecked=true;state.modal={trade:gatherModalState()};renderModal()};
+  // Save
+  document.getElementById("modal-save").onclick=()=>{
+    const out=gatherModalState();
+    out.qty=Number(out.qty)||0;
+    if(out.entryPrice!=="")out.entryPrice=Number(out.entryPrice);
+    // Update or add
+    const exists=state.trades.some(p=>p.id===out.id);
+    state.trades=exists?state.trades.map(p=>p.id===out.id?out:p):[...state.trades,out];
+    state.modal=null;state._modalChecked=false;
+    persist();render();
+  };
+  // Close/cancel
+  document.getElementById("modal-close").onclick=()=>{state.modal=null;state._modalChecked=false;render()};
+  document.getElementById("modal-cancel").onclick=()=>{state.modal=null;state._modalChecked=false;render()};
+  // Close on overlay click
+  overlay.onclick=(e)=>{if(e.target===overlay){state.modal=null;state._modalChecked=false;render()}};
+}
+
+/* ====================================================================== */
+/* Persistence & render loop                                              */
+/* ====================================================================== */
+function persist(){
+  saveState({trades:state.trades,rules:state.rules});
+}
+
+function render(){
+  renderTopbar();
+  renderRail();
+  renderContent();
+  renderMobileTab();
+  renderModal();
+}
+
+/* ====================================================================== */
+/* Init                                                                   */
+/* ====================================================================== */
+(function init(){
+  const data=loadState();
+  if(data){
+    if(data.trades)state.trades=data.trades;
+    if(data.rules)state.rules=data.rules;
+  }
+  state.loaded=true;
+  render();
+})();
+</script>
+</body>
+</html>
