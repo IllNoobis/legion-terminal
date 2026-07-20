@@ -34,6 +34,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text)}
   #topbar{height:auto;padding:10px 14px;flex-wrap:wrap;gap:8px}
   .tb-left{flex-direction:column;gap:4px!important;align-items:flex-start!important}
   .tb-right{width:100%;justify-content:space-between!important}
+  .acct-pills-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100vw}
+  .acct-pills-wrap::-webkit-scrollbar{display:none}
   #rail{display:none}
   #mobile-tabbar{display:flex!important}
   #main-area{padding-bottom:56px}
@@ -58,6 +60,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text)}
 .pill-green{background:var(--greenDim);color:var(--green)}
 .pill-red{background:var(--redDim);color:var(--red)}
 .pill-gold{background:#3A2E18;color:var(--gold)}
+.pill-blue{background:#1A2E4A;color:var(--blue)}
 .stat-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;flex:1;min-width:130px}
 .stat-box .lbl{font-size:11px;color:var(--textFaint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
 .stat-box .val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600}
@@ -84,6 +87,19 @@ tr{border-bottom:1px solid var(--border)}
 .rail-btn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer;color:var(--textDim)}
 .rail-btn.active{background:var(--surface2);border-color:var(--borderLight);color:var(--gold)}
 .rail-btn svg{width:18px;height:18px}
+
+/* === Account pills === */
+.acct-pills-wrap{display:flex;align-items:center;gap:6px;overflow-x:auto;max-width:40vw}
+.acct-pills-wrap::-webkit-scrollbar{display:none}
+.acct-pill{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;transition:all .15s}
+.acct-pill:hover{border-color:var(--borderLight)}
+.acct-pill.active{border-color:var(--gold);background:var(--surface2)}
+.acct-pill .type-badge{font-size:9px;font-weight:700;letter-spacing:.4px;padding:2px 6px;border-radius:999px;text-transform:uppercase}
+.type-eval{background:#3A2E18;color:#D4A24E}
+.type-funded{background:#1E5844;color:#38D9A0}
+.type-sim{background:#1A2E4A;color:#6FA8F5}
+.acct-add-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px dashed var(--borderLight);background:transparent;color:var(--textDim);cursor:pointer;font-size:18px;transition:all .15s}
+.acct-add-btn:hover{border-color:var(--gold);color:var(--gold)}
 </style>
 </head>
 <body>
@@ -129,7 +145,7 @@ const dayKey=d=>new Date(d).toISOString().slice(0,10);
 /* ====================================================================== */
 /* Storage                                                                */
 /* ====================================================================== */
-const STORE_KEY="absorption-terminal-v1";
+const STORE_KEY="legion-terminal-v1";
 function loadState(){try{const r=localStorage.getItem(STORE_KEY);if(r)return JSON.parse(r)}catch(e){console.error("load failed",e)}return null}
 function saveState(data){try{localStorage.setItem(STORE_KEY,JSON.stringify(data))}catch(e){console.error("save failed",e)}}
 
@@ -161,6 +177,37 @@ function evaluateTradeRules(trade,rules){
       results.push({rule:r,pass:!!trade.movedToBreakeven,detail:trade.movedToBreakeven?"moved":"not moved"});
     }else if(r.type==="custom"){
       results.push({rule:r,pass:!!trade.customChecks&&!!trade.customChecks[r.id],detail:trade.customChecks&&trade.customChecks[r.id]?"followed":"not marked"});
+    }
+  });
+  return results;
+}
+
+function evaluatePropRules(trade,propRules,allTrades){
+  if(!propRules)return[];
+  const results=[];
+  propRules.filter(r=>r.active).forEach(r=>{
+    if(r.type==="dll"){
+      const todayKey=dayKey(trade.exitTime||trade.entryTime);
+      const dayPnl=allTrades.filter(t=>t.status==="closed"&&dayKey(t.exitTime||t.entryTime)===todayKey).reduce((a,t)=>a+tradePnl(t),0);
+      const pass=Math.abs(dayPnl)<r.value;
+      results.push({rule:{...r,name:`DLL: $${r.value}`},pass,detail:`Day PnL: ${fmt$(dayPnl)} / limit ${fmt$(-r.value)}`});
+    }else if(r.type==="mll"){
+      const totalPnl=allTrades.filter(t=>t.status==="closed").reduce((a,t)=>a+tradePnl(t),0);
+      const pass=totalPnl>(-r.value);
+      results.push({rule:{...r,name:`MLL: $${r.value}`},pass,detail:`Total PnL: ${fmt$(totalPnl)} / drawdown limit ${fmt$(-r.value)}`});
+    }else if(r.type==="consistency"){
+      const closedTrades=allTrades.filter(t=>t.status==="closed");
+      const totalPnl=closedTrades.reduce((a,t)=>a+tradePnl(t),0);
+      if(totalPnl<=0||closedTrades.length===0)return;
+      const absPnl=closedTrades.map(t=>Math.abs(tradePnl(t)));
+      const maxDay=Math.max(...absPnl);
+      const pct=Math.round((maxDay/totalPnl)*100);
+      const pass=pct<=r.value;
+      results.push({rule:{...r,name:`Consistency: ≤${r.value}%`},pass,detail:`Max day: ${pct}% of total`});
+    }else if(r.type==="target"){
+      const totalPnl=allTrades.filter(t=>t.status==="closed").reduce((a,t)=>a+tradePnl(t),0);
+      const pass=totalPnl>=r.value;
+      results.push({rule:{...r,name:`Target: $${r.value}`},pass,detail:`PnL: ${fmt$(totalPnl)} / target ${fmt$(r.value)} ${pass?"(PASSED)":""}`});
     }
   });
   return results;
@@ -209,6 +256,7 @@ const icons={
   ChevronRight:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
   Gauge:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 6v6l4 2"/></svg>`,
   Target:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+  Settings:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
 };
 function icon(name,sw=2){return `<span style="display:inline-flex;width:1em;height:1em;vertical-align:-.125em">${icons[name]}</span>`}
 
@@ -216,39 +264,72 @@ function icon(name,sw=2){return `<span style="display:inline-flex;width:1em;heig
 /* State                                                                  */
 /* ====================================================================== */
 let state = {
+  accounts: [],
+  activeAccountId: null,
   view: "dashboard",
-  trades: [],
-  rules: makeDefaultRules(),
-  modal: null,        // null = closed, "new" = add, {trade} = edit
+  modal: null,
   calendarCursor: new Date(),
   loaded: false,
+  settingsAccount: null,
+  _modalChecked: false,
 };
+
+function acct(){
+  return state.accounts.find(a=>a.id===state.activeAccountId)||null;
+}
 
 /* ====================================================================== */
 /* TopBar                                                                 */
 /* ====================================================================== */
 function renderTopbar(){
   const tb=document.getElementById("topbar");
-  const allTimePnl=state.trades.filter(t=>t.status==="closed").reduce((a,t)=>a+tradePnl(t),0);
+  const a=acct();
+  const trades=a?a.trades:[];
+  const allTimePnl=trades.filter(t=>t.status==="closed").reduce((ac,t)=>ac+tradePnl(t),0);
   const pnlColor=allTimePnl>=0?T.green:T.red;
+  const acctSize=a?a.size:0;
+
+  const pillsHTML=state.accounts.map(acc=>{
+    const typeClass=acc.type==="eval"?"type-eval":acc.type==="funded"?"type-funded":"type-sim";
+    const isActive=acc.id===state.activeAccountId;
+    return `<div class="acct-pill ${isActive?"active":""}" data-acct-id="${acc.id}">
+      <span class="type-badge ${typeClass}">${acc.type.toUpperCase()}</span>
+      <span>${acc.name}</span>
+    </div>`;
+  }).join("");
+
   tb.innerHTML=`
-    <div class="tb-left" style="display:flex;align-items:baseline;gap:22px">
-      <div>
-        <div style="font-size:10px;color:${T.textFaint};letter-spacing:.6px">ACCOUNT</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px">${fmt$(10000)}</div>
-      </div>
-      <div>
+    <div class="tb-left" style="display:flex;align-items:center;gap:12px">
+      <div class="acct-pills-wrap">${pillsHTML}</div>
+      <button class="acct-add-btn" id="btn-add-account" title="Add account">+</button>
+    </div>
+    <div class="tb-center" style="display:flex;flex-direction:column;align-items:center">
+      <div style="font-size:13px;color:${T.gold};font-weight:700;letter-spacing:1px;font-family:'Manrope',sans-serif">LEGION TERMINAL</div>
+      ${a?`<div style="font-size:10px;color:${T.textFaint};letter-spacing:.6px;margin-top:2px">${a.name} &middot; ${fmt$(acctSize)}</div>`:''}
+    </div>
+    <div class="tb-right" style="display:flex;align-items:center;gap:10px">
+      <div style="text-align:right">
         <div style="font-size:10px;color:${T.textFaint};letter-spacing:.6px">ALL-TIME PNL</div>
         <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:${pnlColor}">${fmt$(allTimePnl)}</div>
       </div>
-    </div>
-    <div class="tb-right" style="display:flex;align-items:center;gap:10px">
-      <div style="font-size:13px;color:${T.gold};font-weight:700;letter-spacing:1px;font-family:'Manrope',sans-serif">LEGION TERMINAL</div>
+      <button id="btn-settings" class="icon-btn" title="Account settings" style="width:28px;height:28px;display:inline-flex">${icons.Settings}</button>
       <button id="btn-add-trade" style="display:flex;align-items:center;gap:6px;background:${T.gold};color:#1A1206;font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer">
         <span style="width:16px;height:16px;display:inline-flex">${icons.PlusCircle}</span> Add Trade
       </button>
     </div>`;
-  document.getElementById("btn-add-trade").onclick=()=>{state.modal="new";renderModal();render()};
+
+  tb.querySelectorAll(".acct-pill").forEach(p=>{
+    p.onclick=()=>{state.activeAccountId=p.dataset.acctId;render()};
+  });
+  document.getElementById("btn-add-account").onclick=()=>{
+    const num=state.accounts.length+1;
+    const newAcct={id:uid(),name:`Account ${num}`,type:"eval",size:50000,trades:[],rules:makeDefaultRules(),propRules:[]};
+    state.accounts.push(newAcct);
+    state.activeAccountId=newAcct.id;
+    persist();render();
+  };
+  document.getElementById("btn-add-trade").onclick=()=>{if(!acct())return;state.modal="new";renderModal();render()};
+  document.getElementById("btn-settings").onclick=()=>{if(!acct())return;state.settingsAccount=acct().id;state.modal="settings";renderModal()};
 }
 
 /* ====================================================================== */
@@ -298,6 +379,7 @@ function renderMobileTab(){
 /* ====================================================================== */
 function renderContent(){
   const c=document.getElementById("content");
+  if(!acct()){c.innerHTML='<div class="empty-state" style="padding:80px 20px">Create or select an account to get started.</div>';return}
   switch(state.view){
     case"dashboard":renderDashboard(c);break;
     case"log":renderTradeLog(c);break;
@@ -344,17 +426,18 @@ function riskGaugeHTML(pnlToday,mll,target){
 /* Dashboard                                                              */
 /* ====================================================================== */
 function renderDashboard(el){
-  const closed=state.trades.filter(t=>t.status==="closed");
-  const open=state.trades.filter(t=>t.status==="open");
+  const a=acct();
+  const closed=a.trades.filter(t=>t.status==="closed");
+  const open=a.trades.filter(t=>t.status==="open");
   const wins=closed.filter(t=>tradePnl(t)>0);
   const losses=closed.filter(t=>tradePnl(t)<0);
-  const totalPnl=closed.reduce((a,t)=>a+tradePnl(t),0);
+  const totalPnl=closed.reduce((ac,t)=>ac+tradePnl(t),0);
   const today=dayKey(new Date());
-  const pnlToday=closed.filter(t=>dayKey(t.exitTime||t.entryTime)===today).reduce((a,t)=>a+tradePnl(t),0);
-  const mllRule=state.rules.find(r=>r.type==="dailyLossLimit"&&r.active);
+  const pnlToday=closed.filter(t=>dayKey(t.exitTime||t.entryTime)===today).reduce((ac,t)=>ac+tradePnl(t),0);
+  const mllRule=a.rules.find(r=>r.type==="dailyLossLimit"&&r.active);
   const mll=mllRule?mllRule.amount:300;
   const winRate=closed.length?Math.round((wins.length/closed.length)*100):0;
-  const avgWin=wins.length?fmt$(wins.reduce((a,t)=>a+tradePnl(t),0)/wins.length):"$0.00";
+  const avgWin=wins.length?fmt$(wins.reduce((ac,t)=>ac+tradePnl(t),0)/wins.length):"$0.00";
 
   el.innerHTML=`
     <div class="page-pad">
@@ -363,6 +446,7 @@ function renderDashboard(el){
           ${riskGaugeHTML(pnlToday,mll,mll*1.5)}
         </div>
         <div class="stat-grid" style="flex:1;min-width:280px;align-content:flex-start">
+          ${statBoxHTML("Account size",fmt$(a.size))}
           ${statBoxHTML("Wins",wins.length,"green")}
           ${statBoxHTML("Losses",losses.length,"red")}
           ${statBoxHTML("Open",open.length)}
@@ -373,9 +457,9 @@ function renderDashboard(el){
       </div>
       <div class="card" style="padding:18px">
         <div class="section-title">Recent trades</div>
-        ${state.trades.length===0
+        ${a.trades.length===0
           ?'<div class="empty-state">No trades yet. Log your first trade to populate the dashboard.</div>'
-          :tradeTableHTML([...state.trades].sort((a,b)=>new Date(b.entryTime)-new Date(a.entryTime)).slice(0,8),false)}
+          :tradeTableHTML([...a.trades].sort((ac,b)=>new Date(b.entryTime)-new Date(a.entryTime)).slice(0,8),false)}
       </div>
     </div>`;
   bindTableActions(el);
@@ -390,12 +474,15 @@ function statBoxHTML(label,value,tone){
 /* Trade table                                                            */
 /* ====================================================================== */
 function tradeTableHTML(trades,showDelete){
+  const a=acct();
   const rows=trades.map(t=>{
     const pnl=tradePnl(t);
-    const results=evaluateTradeRules(t,state.rules);
-    const fails=results.filter(r=>!r.pass).length;
+    const results=evaluateTradeRules(t,a.rules);
+    const propResults=evaluatePropRules(t,a.propRules,a.trades);
+    const allResults=[...results,...propResults];
+    const fails=allResults.filter(r=>!r.pass).length;
     const dirClass=t.direction==="long"?"pill-green":"pill-red";
-    const compliance=results.length===0
+    const compliance=allResults.length===0
       ?`<span style="color:${T.textFaint}">—</span>`
       :(fails===0?`<span class="pill pill-green">Pass</span>`:`<span class="pill pill-red">${fails} issue${fails>1?"s":""}</span>`);
     const pnlColor=t.status!=="closed"?T.textFaint:(pnl>=0?T.green:T.red);
@@ -425,10 +512,10 @@ function tradeTableHTML(trades,showDelete){
 
 function bindTableActions(el){
   el.querySelectorAll("[data-action='edit']").forEach(b=>{
-    b.onclick=()=>{const id=b.dataset.tradeId;const t=state.trades.find(x=>x.id===id);if(t){state.modal={trade:t};renderModal();render()}};
+    b.onclick=()=>{const id=b.dataset.tradeId;const a=acct();const t=a.trades.find(x=>x.id===id);if(t){state.modal={trade:t};renderModal();render()}};
   });
   el.querySelectorAll("[data-action='delete']").forEach(b=>{
-    b.onclick=()=>{const id=b.dataset.tradeId;state.trades=state.trades.filter(x=>x.id!==id);persist();renderContent()};
+    b.onclick=()=>{const id=b.dataset.tradeId;const a=acct();a.trades=a.trades.filter(x=>x.id!==id);persist();renderContent()};
   });
 }
 
@@ -436,11 +523,12 @@ function bindTableActions(el){
 /* Trade log                                                              */
 /* ====================================================================== */
 function renderTradeLog(el){
+  const a=acct();
   el.innerHTML=`
     <div class="page-pad">
       <div class="card" style="padding:18px">
-        <div class="section-title">All trades (${state.trades.length})</div>
-        ${state.trades.length===0?'<div class="empty-state">No trades logged yet.</div>':tradeTableHTML([...state.trades].sort((a,b)=>new Date(b.entryTime)-new Date(a.entryTime)),true)}
+        <div class="section-title">All trades (${a.trades.length})</div>
+        ${a.trades.length===0?'<div class="empty-state">No trades logged yet.</div>':tradeTableHTML([...a.trades].sort((ac,b)=>new Date(b.entryTime)-new Date(a.entryTime)),true)}
       </div>
     </div>`;
   bindTableActions(el);
@@ -450,8 +538,9 @@ function renderTradeLog(el){
 /* Calendar                                                               */
 /* ====================================================================== */
 function renderCalendar(el){
+  const a=acct();
   const cursor=state.calendarCursor;
-  const closed=state.trades.filter(t=>t.status==="closed");
+  const closed=a.trades.filter(t=>t.status==="closed");
   const byDay={};
   closed.forEach(t=>{const k=dayKey(t.exitTime||t.entryTime);byDay[k]=(byDay[k]||0)+tradePnl(t)});
   const year=cursor.getFullYear(),month=cursor.getMonth();
@@ -461,12 +550,12 @@ function renderCalendar(el){
   const cells=[];
   for(let i=0;i<startDow;i++)cells.push(null);
   for(let d=1;d<=daysInMonth;d++)cells.push(d);
-  const monthPnl=Object.entries(byDay).filter(([k])=>k.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).reduce((a,[,v])=>a+v,0);
+  const monthPnl=Object.entries(byDay).filter(([k])=>k.startsWith(`${year}-${String(month+1).padStart(2,"0")}`)).reduce((ac,[,v])=>ac+v,0);
   const monthLabel=first.toLocaleDateString(undefined,{month:"long",year:"numeric"});
   const pnlColor=monthPnl>=0?T.green:T.red;
   const weekdays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-  const calCells=cells.map((d,i)=>{
+  const calCells=cells.map((d)=>{
     if(!d)return `<div></div>`;
     const k=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
     const pnl=byDay[k];
@@ -506,12 +595,13 @@ function renderCalendar(el){
 /* Statistics + Canvas equity curve                                       */
 /* ====================================================================== */
 function renderStats(el){
-  const closed=[...state.trades.filter(t=>t.status==="closed")].sort((a,b)=>new Date(a.exitTime||a.entryTime)-new Date(b.exitTime||b.entryTime));
+  const a=acct();
+  const closed=[...a.trades.filter(t=>t.status==="closed")].sort((ac,b)=>new Date(ac.exitTime||ac.entryTime)-new Date(b.exitTime||b.entryTime));
   const wins=closed.filter(t=>tradePnl(t)>0);
   const losses=closed.filter(t=>tradePnl(t)<0);
-  const totalPnl=closed.reduce((a,t)=>a+tradePnl(t),0);
-  const grossWin=wins.reduce((a,t)=>a+tradePnl(t),0);
-  const grossLoss=Math.abs(losses.reduce((a,t)=>a+tradePnl(t),0));
+  const totalPnl=closed.reduce((ac,t)=>ac+tradePnl(t),0);
+  const grossWin=wins.reduce((ac,t)=>ac+tradePnl(t),0);
+  const grossLoss=Math.abs(losses.reduce((ac,t)=>ac+tradePnl(t),0));
   const profitFactor=grossLoss?grossWin/grossLoss:0;
   const winRate=closed.length?wins.length/closed.length:0;
   const avgWin=wins.length?grossWin/wins.length:0;
@@ -582,7 +672,6 @@ function drawEquityCurve(data){
   const xScale=i=>pad.left+(i/(data.length-1||1))*plotW;
   const yScale=v=>pad.top+plotH-(((v-minV)/yRange)*plotH);
 
-  // Grid lines
   ctx.strokeStyle=T.border;
   ctx.lineWidth=.5;
   const gridLines=5;
@@ -594,14 +683,12 @@ function drawEquityCurve(data){
     ctx.fillText(fmt$(val),pad.left-8,y);
   }
 
-  // X axis labels
   ctx.fillStyle=T.textFaint;ctx.font="11px JetBrains Mono";ctx.textAlign="center";ctx.textBaseline="top";
   const step=Math.max(1,Math.floor(data.length/8));
   for(let i=0;i<data.length;i+=step){
     ctx.fillText("#"+data[i].i,xScale(i),H-pad.bottom+8);
   }
 
-  // Zero line
   const zeroY=yScale(0);
   if(zeroY>=pad.top&&zeroY<=pad.top+plotH){
     ctx.strokeStyle=T.textFaint;ctx.lineWidth=1;ctx.setLineDash([4,4]);
@@ -609,7 +696,6 @@ function drawEquityCurve(data){
     ctx.setLineDash([]);
   }
 
-  // Line
   ctx.strokeStyle=T.gold;ctx.lineWidth=2;ctx.lineJoin="round";ctx.lineCap="round";
   ctx.beginPath();
   data.forEach((d,i)=>{
@@ -618,7 +704,6 @@ function drawEquityCurve(data){
   });
   ctx.stroke();
 
-  // Glow
   ctx.save();ctx.globalAlpha=.15;ctx.strokeStyle=T.gold;ctx.lineWidth=8;
   ctx.beginPath();
   data.forEach((d,i)=>{
@@ -632,10 +717,11 @@ function drawEquityCurve(data){
 /* Rules                                                                  */
 /* ====================================================================== */
 function renderRules(el){
-  const dailyCompliance=computeDailyLossCompliance(state.trades,state.rules);
-  const days=Object.entries(dailyCompliance).sort((a,b)=>new Date(b[0])-new Date(a[0])).slice(0,10);
+  const a=acct();
+  const dailyCompliance=computeDailyLossCompliance(a.trades,a.rules);
+  const days=Object.entries(dailyCompliance).sort((ac,b)=>new Date(b[0])-new Date(a[0])).slice(0,10);
 
-  const ruleItems=state.rules.map(r=>{
+  const ruleItems=a.rules.map(r=>{
     let configHTML="";
     if(r.type==="maxContracts"){
       configHTML=`max <input type="number" class="input input-sm" value="${r.maxQty}" data-rule-id="${r.id}" data-field="maxQty"/> contracts`;
@@ -668,8 +754,41 @@ function renderRules(el){
     </div>`;
   }).join("");
 
+  const propRuleItems=(a.propRules||[]).map(r=>{
+    let configHTML="";
+    if(r.type==="dll"){configHTML=`$<input type="number" class="input input-md" value="${r.value}" data-prop-rule-id="${r.id}" data-field="value"/> daily`}
+    else if(r.type==="mll"){configHTML=`$<input type="number" class="input input-md" value="${r.value}" data-prop-rule-id="${r.id}" data-field="value"/> max drawdown`}
+    else if(r.type==="consistency"){configHTML=`<input type="number" class="input input-md" value="${r.value}" data-prop-rule-id="${r.id}" data-field="value"/>% max`}
+    else if(r.type==="target"){configHTML=`$<input type="number" class="input input-md" value="${r.value}" data-prop-rule-id="${r.id}" data-field="value"/> target`}
+
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${T.surface2};border-radius:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" ${r.active?"checked":""} data-toggle-prop-rule="${r.id}"/>
+        <div>
+          <div style="font-size:13px;font-weight:600">${r.name}</div>
+          <div style="font-size:11px;color:${T.textFaint}" data-prop-rule-config="${r.id}">${configHTML}</div>
+        </div>
+      </div>
+      <button class="icon-btn" data-remove-prop-rule="${r.id}"><span style="width:15px;height:15px;display:inline-flex">${icons.Trash2}</span></button>
+    </div>`;
+  }).join("");
+
   el.innerHTML=`
     <div class="page-pad">
+      <div class="card" style="padding:18px">
+        <div class="section-title">Prop Firm Rules</div>
+        <div style="display:flex;flex-direction:column;gap:10px">${propRuleItems.length?propRuleItems:'<div class="empty-state" style="padding:20px 0">No prop firm rules configured. Add rules below.</div>'}</div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <select id="new-prop-rule-type" class="input" style="width:140px">
+            <option value="dll">Daily Loss Limit</option>
+            <option value="mll">Max Loss Limit</option>
+            <option value="consistency">Consistency</option>
+            <option value="target">Profit Target</option>
+          </select>
+          <input id="new-prop-rule-name" class="input" placeholder="Rule name..." style="flex:1"/>
+          <button id="btn-add-prop-rule" class="pill-btn" style="background:${T.gold};color:#1A1206;font-weight:700">Add Prop Rule</button>
+        </div>
+      </div>
       <div class="card" style="padding:18px">
         <div class="section-title">Trading rules</div>
         <div style="display:flex;flex-direction:column;gap:10px">${ruleItems}</div>
@@ -684,22 +803,96 @@ function renderRules(el){
       </div>
     </div>`;
 
-  // Bind rule events
   el.querySelectorAll("[data-toggle-rule]").forEach(cb=>{
-    cb.onchange=()=>{const id=cb.dataset.toggleRule;state.rules=state.rules.map(r=>r.id===id?{...r,active:!r.active}:r);persist();renderContent()};
+    cb.onchange=()=>{const id=cb.dataset.toggleRule;a.rules=a.rules.map(r=>r.id===id?{...r,active:!r.active}:r);persist();renderContent()};
   });
   el.querySelectorAll("[data-remove-rule]").forEach(btn=>{
-    btn.onclick=()=>{const id=btn.dataset.removeRule;state.rules=state.rules.filter(r=>r.id!==id);persist();renderContent()};
+    btn.onclick=()=>{const id=btn.dataset.removeRule;a.rules=a.rules.filter(r=>r.id!==id);persist();renderContent()};
   });
   el.querySelectorAll("[data-rule-id]").forEach(inp=>{
-    inp.onchange=()=>{const id=inp.dataset.ruleId;const field=inp.dataset.field;state.rules=state.rules.map(r=>r.id===id?{...r,[field]:Number(inp.value)}:r);persist()};
+    inp.onchange=()=>{const id=inp.dataset.ruleId;const field=inp.dataset.field;a.rules=a.rules.map(r=>r.id===id?{...r,[field]:Number(inp.value)}:r);persist()};
   });
+
+  el.querySelectorAll("[data-toggle-prop-rule]").forEach(cb=>{
+    cb.onchange=()=>{const id=cb.dataset.togglePropRule;a.propRules=a.propRules.map(r=>r.id===id?{...r,active:!r.active}:r);persist();renderContent()};
+  });
+  el.querySelectorAll("[data-remove-prop-rule]").forEach(btn=>{
+    btn.onclick=()=>{const id=btn.dataset.removePropRule;a.propRules=a.propRules.filter(r=>r.id!==id);persist();renderContent()};
+  });
+  el.querySelectorAll("[data-prop-rule-id]").forEach(inp=>{
+    inp.onchange=()=>{const id=inp.dataset.propRuleId;const field=inp.dataset.field;a.propRules=a.propRules.map(r=>r.id===id?{...r,[field]:Number(inp.value)}:r);persist()};
+  });
+
   document.getElementById("btn-add-rule").onclick=()=>{
     const name=document.getElementById("new-rule-name").value.trim();
     if(!name)return;
-    state.rules=[...state.rules,{id:uid(),name,type:"custom",active:true}];
+    a.rules=[...a.rules,{id:uid(),name,type:"custom",active:true}];
     persist();renderContent();
   };
+  document.getElementById("btn-add-prop-rule").onclick=()=>{
+    const type=document.getElementById("new-prop-rule-type").value;
+    const name=document.getElementById("new-prop-rule-name").value.trim()||type.toUpperCase();
+    const defaultValue=type==="consistency"?30:1000;
+    a.propRules=[...(a.propRules||[]),{id:uid(),type,name,value:defaultValue,active:true}];
+    persist();renderContent();
+  };
+}
+
+/* ====================================================================== */
+/* Settings modal                                                         */
+/* ====================================================================== */
+function renderSettingsModal(){
+  const overlay=document.getElementById("modal-overlay");
+  const panel=overlay.querySelector(".modal-panel");
+  const a=acct();
+  if(!a||!state.settingsAccount){overlay.classList.remove("open");return}
+  const target=state.accounts.find(x=>x.id===state.settingsAccount);
+  if(!target){overlay.classList.remove("open");return}
+
+  const deleteBtnHTML=state.accounts.length>1
+    ?`<button id="settings-delete" class="pill-btn" style="background:${T.redDim};color:${T.red};border:1px solid ${T.red};font-weight:700;flex:1">Delete Account</button>`
+    :'';
+
+  panel.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid ${T.border}">
+      <div style="font-weight:700;font-size:16px">Account Settings</div>
+      <button id="modal-close" style="background:none;border:none;color:${T.textDim};cursor:pointer"><span style="width:20px;height:20px;display:inline-flex">${icons.X}</span></button>
+    </div>
+    <div style="padding:20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px">
+      <div class="form-row"><span class="row-label">Account name</span><input class="input" id="settings-name" value="${target.name}"/></div>
+      <div class="form-row"><span class="row-label">Type</span>
+        <select class="input" id="settings-type" style="width:200px">
+          <option value="eval" ${target.type==="eval"?"selected":""}>Eval</option>
+          <option value="funded" ${target.type==="funded"?"selected":""}>Funded</option>
+          <option value="sim" ${target.type==="sim"?"selected":""}>Sim</option>
+        </select>
+      </div>
+      <div class="form-row"><span class="row-label">Account size ($)</span><input type="number" class="input" id="settings-size" value="${target.size}"/></div>
+    </div>
+    <div style="padding:16px;border-top:1px solid ${T.border};display:flex;gap:10px">
+      <button id="settings-save" class="pill-btn" style="background:${T.gold};color:#1A1206;flex:1;font-weight:700">Save</button>
+      <button id="settings-cancel" class="pill-btn" style="background:transparent;border:1px solid ${T.border};color:${T.textDim}">Cancel</button>
+      ${deleteBtnHTML}
+    </div>`;
+
+  document.getElementById("modal-close").onclick=()=>{state.modal=null;state.settingsAccount=null;render()};
+  document.getElementById("settings-cancel").onclick=()=>{state.modal=null;state.settingsAccount=null;render()};
+  document.getElementById("settings-save").onclick=()=>{
+    const name=document.getElementById("settings-name").value.trim()||target.name;
+    const type=document.getElementById("settings-type").value;
+    const size=Number(document.getElementById("settings-size").value)||target.size;
+    target.name=name;target.type=type;target.size=size;
+    state.modal=null;state.settingsAccount=null;
+    persist();render();
+  };
+  document.getElementById("settings-delete").onclick=()=>{
+    if(state.accounts.length<=1)return;
+    state.accounts=state.accounts.filter(x=>x.id!==target.id);
+    if(state.activeAccountId===target.id)state.activeAccountId=state.accounts[0]?.id||null;
+    state.modal=null;state.settingsAccount=null;
+    persist();render();
+  };
+  overlay.onclick=(e)=>{if(e.target===overlay){state.modal=null;state.settingsAccount=null;render()}};
 }
 
 /* ====================================================================== */
@@ -709,7 +902,9 @@ function renderModal(){
   const overlay=document.getElementById("modal-overlay");
   const panel=overlay.querySelector(".modal-panel");
   if(state.modal===null){overlay.classList.remove("open");return}
+  if(state.modal==="settings"){overlay.classList.add("open");renderSettingsModal();return}
   overlay.classList.add("open");
+  const a=acct();
 
   const isEdit=state.modal&&state.modal.trade;
   const t=isEdit?{...state.modal.trade}:{
@@ -718,8 +913,10 @@ function renderModal(){
     stopTicks:"",fee:0,tags:"",notes:"",movedToBreakeven:false,customChecks:{},
   };
   const checked=state._modalChecked||false;
-  const evalResults=evaluateTradeRules(t,state.rules);
-  const customRules=state.rules.filter(r=>r.type==="custom"&&r.active);
+  const evalResults=evaluateTradeRules(t,a.rules);
+  const propResults=evaluatePropRules(t,a.propRules,a.trades);
+  const allResults=[...evalResults,...propResults];
+  const customRules=a.rules.filter(r=>r.type==="custom"&&r.active);
 
   function field(k,v){t[k]=v}
 
@@ -738,8 +935,8 @@ function renderModal(){
 
   const complianceHTML=checked?`
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-      ${evalResults.length===0?'<div style="font-size:12px;color:${T.textFaint}">No applicable rules yet.</div>':''}
-      ${evalResults.map(r=>`
+      ${allResults.length===0?'<div style="font-size:12px;color:${T.textFaint}">No applicable rules yet.</div>':''}
+      ${allResults.map(r=>`
         <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 10px;background:${T.surface2};border-radius:6px">
           <span style="color:${T.textDim}">${r.rule.name}</span>
           <span style="color:${r.pass?T.green:T.red};font-weight:700;display:flex;align-items:center;gap:4px">
@@ -783,7 +980,6 @@ function renderModal(){
       <button id="modal-cancel" class="pill-btn" style="background:transparent;border:1px solid ${T.border};color:${T.textDim}">Cancel</button>
     </div>`;
 
-  // Helper to gather current modal state
   function gatherModalState(){
     const out={...t};
     const sym=document.getElementById("modal-symbol");
@@ -809,36 +1005,28 @@ function renderModal(){
     return out;
   }
 
-  // Direction buttons
   panel.querySelectorAll("[data-dir]").forEach(b=>{
     b.onclick=()=>{t.direction=b.dataset.dir;state.modal={trade:t};state._modalChecked=checked;renderModal()};
   });
-  // Status buttons
   panel.querySelectorAll("[data-status]").forEach(b=>{
     b.onclick=()=>{t.status=b.dataset.status;state.modal={trade:t};state._modalChecked=checked;renderModal()};
   });
-  // Custom checks
   panel.querySelectorAll(".modal-custom-check").forEach(cb=>{
     cb.onchange=()=>{const cur=gatherModalState();if(!cur.customChecks)cur.customChecks={};cur.customChecks[cb.dataset.crId]=cb.checked;t.customChecks=cur.customChecks};
   });
-  // Compliance check
   const btnCheck=document.getElementById("btn-check-compliance");
   if(btnCheck)btnCheck.onclick=()=>{state._modalChecked=true;state.modal={trade:gatherModalState()};renderModal()};
-  // Save
   document.getElementById("modal-save").onclick=()=>{
     const out=gatherModalState();
     out.qty=Number(out.qty)||0;
     if(out.entryPrice!=="")out.entryPrice=Number(out.entryPrice);
-    // Update or add
-    const exists=state.trades.some(p=>p.id===out.id);
-    state.trades=exists?state.trades.map(p=>p.id===out.id?out:p):[...state.trades,out];
+    const exists=a.trades.some(p=>p.id===out.id);
+    a.trades=exists?a.trades.map(p=>p.id===out.id?out:p):[...a.trades,out];
     state.modal=null;state._modalChecked=false;
     persist();render();
   };
-  // Close/cancel
   document.getElementById("modal-close").onclick=()=>{state.modal=null;state._modalChecked=false;render()};
   document.getElementById("modal-cancel").onclick=()=>{state.modal=null;state._modalChecked=false;render()};
-  // Close on overlay click
   overlay.onclick=(e)=>{if(e.target===overlay){state.modal=null;state._modalChecked=false;render()}};
 }
 
@@ -846,7 +1034,7 @@ function renderModal(){
 /* Persistence & render loop                                              */
 /* ====================================================================== */
 function persist(){
-  saveState({trades:state.trades,rules:state.rules});
+  saveState({accounts:state.accounts,activeAccountId:state.activeAccountId});
 }
 
 function render(){
@@ -862,9 +1050,13 @@ function render(){
 /* ====================================================================== */
 (function init(){
   const data=loadState();
-  if(data){
-    if(data.trades)state.trades=data.trades;
-    if(data.rules)state.rules=data.rules;
+  if(data&&data.accounts&&data.accounts.length>0){
+    state.accounts=data.accounts;
+    state.activeAccountId=data.activeAccountId||data.accounts[0].id;
+  }else{
+    const defaultAcct={id:uid(),name:"Account 1",type:"eval",size:50000,trades:[],rules:makeDefaultRules(),propRules:[]};
+    state.accounts=[defaultAcct];
+    state.activeAccountId=defaultAcct.id;
   }
   state.loaded=true;
   render();
